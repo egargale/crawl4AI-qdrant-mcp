@@ -293,6 +293,26 @@ def insert_documents_to_qdrant(
         
         print(f"Inserted batch {i//batch_size + 1}/{(len(documents)-1)//batch_size + 1}")
 
+def get_fastembed_dimensions(model_name: str) -> int:
+    """Get the actual dimensions of a FastEmbed model."""
+    try:
+        from fastembed.common.model_description import DenseModelDescription
+        from fastembed import TextEmbedding
+        
+        # Initialize the embedding model
+        embedding_model = TextEmbedding(model_name)
+        
+        # Get model description
+        model_description: DenseModelDescription = embedding_model._get_model_description(model_name)
+        
+        return model_description.dim
+    except Exception as e:
+        print(f"Error getting FastEmbed dimensions: {e}")
+        # Return default for BAAI/bge-small-en
+        if model_name == "BAAI/bge-small-en":
+            return 384
+        return 384  # Default fallback
+
 def main():
     parser = argparse.ArgumentParser(description="Insert crawled docs into Qdrant")
     parser.add_argument("url", help="URL to crawl (regular, .txt, or sitemap)")
@@ -316,6 +336,25 @@ def main():
     # Print connection info
     print("Successfully connected to Qdrant!")
     print(f"Qdrant URL: {os.getenv('QDRANT_URL')}")
+    
+    # Adjust embedding dimension for FastEmbed to prevent collection recreation
+    embedding_dim = args.embedding_dim
+    if args.embedding_method == "fastembed":
+        print(f"Using FastEmbed with model: {args.fastembed_model}")
+        # Get actual dimensions of the FastEmbed model
+        actual_dim = get_fastembed_dimensions(args.fastembed_model)
+        print(f"FastEmbed model dimensions: {actual_dim}")
+        
+        # If using default embedding dimension, use the actual model dimensions
+        if args.embedding_dim == 1024 and args.fastembed_model == "BAAI/bge-small-en":
+            print("Using actual FastEmbed model dimensions to prevent collection recreation")
+            embedding_dim = actual_dim
+        elif args.embedding_dim != actual_dim:
+            print(f"Warning: Specified embedding dimension ({args.embedding_dim}) differs from model dimensions ({actual_dim})")
+        print(f"Using embedding dimension: {embedding_dim}")
+    else:
+        print(f"Using OpenAI with model: {args.embedding_model}")
+        print(f"Embedding dimension: {embedding_dim}")
 
     # Detect URL type
     url = args.url
@@ -361,7 +400,7 @@ def main():
         embedding_client,
         args.collection, 
         args.embedding_model,
-        args.embedding_dim,
+        embedding_dim,  # Use our adjusted embedding dimension
         ids, 
         documents, 
         metadatas, 

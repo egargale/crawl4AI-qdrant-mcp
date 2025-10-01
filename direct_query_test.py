@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
 """
-Integration test for querying the 'manuali' collection using direct Qdrant client approach.
-This approach works with the existing collection configuration.
+Direct query test for the 'manuali' collection using Qdrant client.
 """
 
 import os
 import sys
-import asyncio
-import argparse
-from typing import List
 from dotenv import load_dotenv
 
 # Add the mcp-server-qdrant src directory to the Python path
@@ -16,20 +12,20 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'mcp-server-qdrant', 
 
 from qdrant_client import QdrantClient
 from mcp_server_qdrant.embeddings.fastembed import FastEmbedProvider
+import asyncio
 
 
-async def test_manuali_collection_query():
-    """Test querying the 'manuali' collection using direct Qdrant client approach."""
+async def direct_query_test():
+    """Directly query the 'manuali' collection using Qdrant client."""
     
     # Load environment variables
     load_dotenv()
     
     collection_name = "manuali"
-    query_text = "fastmcp and OAuth providers"
+    query_text = "MCP server and OAuth"  # Modified query
     
-    print(f"Querying collection: {collection_name}")
+    print(f"Direct query test for collection: {collection_name}")
     print(f"Search query: '{query_text}'")
-    print(f"Using embedding method: fastembed")
     
     try:
         # Create Qdrant client
@@ -43,8 +39,8 @@ async def test_manuali_collection_query():
         query_vector = await embedding_provider.embed_query(query_text)
         print(f"Generated query vector with {len(query_vector)} dimensions")
         
-        # Query the collection directly
-        print(f"Searching for '{query_text}' in collection '{collection_name}'...")
+        # Query the collection
+        print("Querying collection...")
         search_result = client.query_points(
             collection_name=collection_name,
             query=query_vector,
@@ -64,12 +60,12 @@ async def test_manuali_collection_query():
                 if hasattr(point, 'payload') and point.payload:
                     # Print document content if available
                     if 'document' in point.payload:
-                        content = str(point.payload['document'])
-                        print(f"Content: {content[:500]}...")
+                        print(f"Content: {str(point.payload['document'])[:500]}...")
                     # Print other payload data
                     other_payload = {k: v for k, v in point.payload.items() if k != 'document'}
                     if other_payload:
                         print(f"Metadata: {other_payload}")
+                print()
         else:
             print("No results found for the query.")
             
@@ -83,25 +79,22 @@ async def test_manuali_collection_query():
 
 
 def main():
-    """Main function to run the integration test."""
-    print("Running integration test for querying 'manuali' collection...")
-    print("Note: The 'manuali' collection contains AgentScope documentation.")
+    """Main function to run the direct query test."""
+    print("Running direct query test for 'manuali' collection...")
     
     try:
         # Run the async test
-        success = asyncio.run(test_manuali_collection_query())
+        success = asyncio.run(direct_query_test())
         
         if success:
-            print("\nQuery test completed successfully!")
-            print("This demonstrates that the 'manuali' collection can be queried successfully")
-            print("using fastembed embeddings, which is the core requirement.")
+            print("\nDirect query test completed!")
             return 0
         else:
-            print("\nQuery test failed!")
+            print("\nDirect query test failed!")
             return 1
             
     except Exception as e:
-        print(f"\nQuery test error: {e}")
+        print(f"\nDirect query test error: {e}")
         import traceback
         traceback.print_exc()
         return 1
