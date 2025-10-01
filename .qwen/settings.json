@@ -1,0 +1,16 @@
+{
+    "mcpServers": {
+        "qdrant": {
+            "command": "uvx",
+            "args": [
+                "mcp-server-qdrant"
+            ],
+            "env": {
+                "QDRANT_URL": "https://ae148ce7-f0c9-4685-bd35-84e189fd8f86.europe-west3-0.gcp.cloud.qdrant.io:6333",
+                "QDRANT_API_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIn0.44jMkWJJ7fe5_uD4LQT6Qv3zHVgZYqnGTIlsvx8omXE",
+                "COLLECTION_NAME": "manuali",
+                "EMBEDDING_MODEL": "sentence-transformers/all-MiniLM-L6-v2"
+            }
+        }
+    }
+}

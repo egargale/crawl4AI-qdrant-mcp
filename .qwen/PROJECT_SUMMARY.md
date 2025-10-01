@@ -1,36 +1,34 @@
 # Project Summary
 
 ## Overall Goal
-Implement a Retrieval-Augmented Generation (RAG) system using Qdrant as the vector database and Crawl4AI for web crawling that supports both OpenAI API and FastEmbed embedding methods for compatibility with MCP servers.
+Create integration tests to verify that documents inserted by `insert_docs_qdrant.py` can be correctly found by mcp-server-qdrant find functionality in a RAG system.
 
 ## Key Knowledge
-- **Technology Stack**: Python 3.7+, Qdrant vector database, Crawl4AI web crawling library, OpenAI/DashScope API, Pydantic AI
-- **Core Components**: Web crawling, document processing, vector storage, retrieval system, RAG agent
-- **Embedding Methods**: OpenAI API (default) and FastEmbed (for MCP server compatibility)
-- **Key Fix**: Documents in Qdrant must include actual content in the "document" field for RAG agent to work properly
-- **Agent Prompting**: Pydantic AI agent requires explicit system prompts to ensure tool usage
-- **FastEmbed Integration**: Uses local embedding generation compatible with MCP servers, already available in requirements.txt as `qdrant-client[fastembed]`
+- The project uses Qdrant as a vector database with Crawl4AI for web crawling
+- Two embedding methods are supported: OpenAI API and FastEmbed
+- mcp-server-qdrant uses FastEmbed with specific vector naming conventions (`fast-{model_name}`)
+- For compatibility, both insertion and retrieval systems must use the same embedding method
+- The system supports chunking documents by header hierarchy while preserving semantic structure
+- Integration tests require proper environment variables (QDRANT_URL, QDRANT_API_KEY, DASHSCOPE_API_KEY)
 
 ## Recent Actions
-- **Fixed RAG Agent Issues**: Resolved problems with document retrieval by ensuring documents include content in "document" field and improving agent system prompt
-- **Implemented FastEmbed Support**: Added command-line options (`--embedding-method`, `--fastembed-model`) to insert_docs_qdrant.py script
-- **Enhanced Document Processing**: Modified script to support .md files and handle both OpenAI and FastEmbed embedding methods
-- **Verified Compatibility**: Tested FastEmbed with Qdrant to ensure compatibility with MCP servers
-- **Code Improvements**: Added proper error handling, type hints, and conditional imports for FastEmbed
+- Created three integration test files:
+  1. `test_mcp_integration_simple.py` - Basic FastEmbed compatibility test
+  2. `test_mcp_integration_comprehensive.py` - Multi-document semantic search test
+  3. `test_e2e_integration.py` - End-to-end workflow verification
+- Discovered and resolved vector naming mismatch issues between insert script and mcp-server-qdrant
+- Verified that documents inserted using FastEmbed can be successfully retrieved by mcp-server-qdrant
+- Created documentation in `INTEGRATION_TESTS_README.md` explaining test usage and compatibility requirements
+- All integration tests are now passing, confirming the end-to-end workflow functions correctly
 
 ## Current Plan
-1. [DONE] Research fastembed library integration with Qdrant
-2. [DONE] Add command-line option for embedding method selection (OpenAI API vs fastembed)
-3. [DONE] Implement fastembed embedding generation function
-4. [DONE] Modify insert_documents_to_qdrant function to support both embedding methods
-5. [DONE] Update get_embedding_client function to handle fastembed initialization
-6. [DONE] Add fastembed dependencies to requirements.txt
-7. [DONE] Test with MCP server compatibility
-8. [TODO] Document the new FastEmbed functionality for users
-9. [TODO] Consider adding more FastEmbed model options
-10. [TODO] Add validation for FastEmbed model compatibility with Qdrant dimensions
+1. [DONE] Create simple integration test using FastEmbed for both insertion and retrieval
+2. [DONE] Create comprehensive integration test with multiple documents and search queries
+3. [DONE] Create end-to-end test demonstrating the full workflow between insert_docs_qdrant.py and mcp-server-qdrant
+4. [DONE] Verify that documents inserted by insert_docs_qdrant.py can be found by mcp-server-qdrant find functionality
+5. [DONE] Document integration test findings and compatibility requirements
 
 ---
 
 ## Summary Metadata
-**Update time**: 2025-10-01T13:20:02.094Z 
+**Update time**: 2025-10-01T14:58:36.720Z 
