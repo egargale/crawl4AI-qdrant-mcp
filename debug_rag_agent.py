@@ -1,4 +1,7 @@
-"""Pydantic AI agent that leverages RAG with Qdrant for Sierrachart documentation."""
+#!/usr/bin/env python3
+"""
+Debug version of the RAG agent to see what's being retrieved.
+"""
 
 import os
 import sys
@@ -50,13 +53,10 @@ qwen_model = OpenAIModel(
 agent = Agent(
     model=qwen_model,
     deps_type=RAGDeps,
-    system_prompt="You are a helpful assistant that answers questions about Sierra Chart documentation. "
-                  "When a user asks a question, you MUST first use the retrieve tool to search for relevant information "
-                  "in the documentation before answering. The retrieve tool will provide context about the documentation. "
-                  "Use this context to answer the user's question accurately. "
+    system_prompt="You are a helpful assistant that answers questions based on the provided documentation. "
+                  "Use the retrieve tool to get relevant information from the documentation before answering. "
                   "If the documentation doesn't contain the answer, clearly state that the information isn't available "
-                  "in the current documentation and provide your best general knowledge response.",
-    retries=3
+                  "in the current documentation and provide your best general knowledge response."
 )
 
 
@@ -128,6 +128,13 @@ def query_collection(
         with_payload=True
     )
     
+    # Debug: Print what we're getting from Qdrant
+    print(f"DEBUG: Found {len(search_result.points)} points from Qdrant")
+    for i, point in enumerate(search_result.points):
+        print(f"DEBUG: Point {i}: ID={point.id}, Score={point.score}")
+        print(f"DEBUG: Point {i} Payload keys: {list(point.payload.keys())}")
+        print(f"DEBUG: Point {i} Document content preview: {str(point.payload.get('document', ''))[:100]}...")
+    
     # Format results similar to ChromaDB format for compatibility
     return {
         "ids": [[result.id for result in search_result.points]],
@@ -148,11 +155,14 @@ def format_results_as_context(query_results: Dict[str, Any]) -> str:
     """
     context = "CONTEXT INFORMATION:\n\n"
     
+    print(f"DEBUG: Formatting {len(query_results['documents'][0])} documents as context")
+    
     for i, (doc, metadata, distance) in enumerate(zip(
         query_results["documents"][0],
         query_results["metadatas"][0],
         query_results["distances"][0]
     )):
+        print(f"DEBUG: Document {i}: Content preview: {str(doc)[:100]}...")
         # Add document information
         context += f"Document {i+1} (Relevance: {1 - distance:.2f}):\n"
         
@@ -181,6 +191,7 @@ async def retrieve(context: RunContext[RAGDeps], search_query: str, n_results: i
     Returns:
         Formatted context information from the retrieved documents.
     """
+    print(f"DEBUG: Retrieving documents for query: '{search_query}'")
     # Get Qdrant client and embedding client
     embedding_client = get_embedding_client()
     
@@ -196,7 +207,9 @@ async def retrieve(context: RunContext[RAGDeps], search_query: str, n_results: i
     )
     
     # Format the results as context
-    return format_results_as_context(query_results)
+    context_str = format_results_as_context(query_results)
+    print(f"DEBUG: Returning context:\n{context_str}")
+    return context_str
 
 
 async def run_rag_agent(

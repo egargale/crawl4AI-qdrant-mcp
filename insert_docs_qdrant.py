@@ -303,6 +303,7 @@ def main():
             ids.append(chunk_idx)
             documents.append(chunk)
             meta = extract_section_info(chunk)
+            meta["document"] = chunk  # Include the actual document content
             meta["chunk_index"] = chunk_idx
             meta["source"] = url
             metadatas.append(meta)
