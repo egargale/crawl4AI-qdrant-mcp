@@ -11,6 +11,7 @@ This project implements a Retrieval-Augmented Generation (RAG) system using Qdra
 3. **Vector Storage**: Stores document chunks in Qdrant with embeddings for semantic search
 4. **Retrieval System**: Implements semantic search functionality to find relevant documents
 5. **RAG Agent**: Uses Pydantic AI with Qwen models to answer questions based on retrieved context
+6. **Testing**: Comprehensive test suite located in the `tests` directory
 
 ### Technologies Used
 
@@ -32,6 +33,7 @@ This project implements a Retrieval-Augmented Generation (RAG) system using Qdra
 ├── RETRIEVAL_README.md       # Documentation for retrieval functionality
 ├── retrieve_docs_qdrant.py   # Document retrieval script with CLI interface
 ├── test_retrieval.py         # Test script for retrieval functionality
+├── tests/                    # Directory containing all test files
 ├── crawl4AI-examples/        # Example scripts for Crawl4AI usage
 │   ├── 1-crawl_single_page.py
 │   ├── 2-crawl_docs_sequential.py
@@ -127,7 +129,7 @@ python rag_agent_qdrant.py --question "Your question here"
 
 ### 4. Testing
 
-Run the test scripts to verify functionality:
+The project includes comprehensive tests located in the `tests` directory. Run the test scripts to verify functionality:
 
 ```bash
 # Test retrieval functionality
@@ -135,7 +137,23 @@ python test_retrieval.py
 
 # Test Qdrant connection and basic operations
 python qdrant_test.py
+
+# Run all tests in the tests directory
+python -m pytest tests/
+
+# Run a specific test file
+python -m pytest tests/test_retrieval.py
+
+# Run tests with verbose output
+python -m pytest tests/ -v
 ```
+
+The tests directory contains various test files for different aspects of the system:
+- Integration tests for MCP server and Qdrant
+- Tests for FastEmbed functionality
+- End-to-end integration tests
+- Collection configuration tests
+- Retrieval functionality tests
 
 ## Development Workflow
 
