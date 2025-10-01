@@ -12,7 +12,7 @@ import argparse
 import sys
 import re
 import asyncio
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse, urldefrag
 from xml.etree import ElementTree
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode, MemoryAdaptiveDispatcher
@@ -21,6 +21,13 @@ from dotenv import load_dotenv
 import os
 from qdrant_client import QdrantClient, models
 from openai import OpenAI
+
+# Try to import fastembed, but make it optional
+try:
+    from fastembed import TextEmbedding
+    FASTEMBED_AVAILABLE = True
+except ImportError:
+    FASTEMBED_AVAILABLE = False
 
 # Load environment variables from .env file
 load_dotenv()
@@ -63,7 +70,7 @@ def is_sitemap(url: str) -> bool:
     return url.endswith('sitemap.xml') or 'sitemap' in urlparse(url).path
 
 def is_txt(url: str) -> bool:
-    return url.endswith('.txt')
+    return url.endswith('.txt') or url.endswith('.md')
 
 async def crawl_recursive_internal_links(start_urls, max_depth=3, max_concurrent=10) -> List[Dict[str,Any]]:
     """Recursive crawl using logic from 5-crawl_recursive_internal_links.py. Returns list of dicts with url and markdown."""
@@ -168,15 +175,18 @@ def get_qdrant_client() -> QdrantClient:
     
     return QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
 
-def get_embedding_client() -> OpenAI:
+def get_embedding_client() -> Optional[OpenAI]:
     """Initialize and return an OpenAI-compatible embedding client."""
     return OpenAI(
         api_key=os.getenv("DASHSCOPE_API_KEY"),
         base_url=os.getenv("DASHSCOPE_URL", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"),
     )
 
-def generate_embeddings(client: OpenAI, texts: List[str], model_name: str, dimensions: int) -> List[List[float]]:
+def generate_embeddings(client: Optional[OpenAI], texts: List[str], model_name: str, dimensions: int) -> List[List[float]]:
     """Generate embeddings for a list of texts."""
+    if client is None:
+        raise ValueError("OpenAI client is required for generating embeddings")
+    
     all_embeddings = []
     batch_size = 10
     for i in range(0, len(texts), batch_size):
@@ -189,22 +199,49 @@ def generate_embeddings(client: OpenAI, texts: List[str], model_name: str, dimen
         all_embeddings.extend([data.embedding for data in resp.data])
     return all_embeddings
 
+
+def generate_embeddings_fastembed(texts: List[str], model_name: str) -> List[List[float]]:
+    """Generate embeddings for a list of texts using fastembed."""
+    if not FASTEMBED_AVAILABLE:
+        raise ImportError("fastembed is not installed. Please install it with: pip install fastembed")
+    
+    # Initialize the embedding model
+    embedding_model = TextEmbedding(model_name=model_name)
+    
+    # Generate embeddings
+    embeddings = list(embedding_model.embed(texts))
+    
+    # Convert numpy arrays to lists
+    return [embedding.tolist() for embedding in embeddings]
+
 def insert_documents_to_qdrant(
     qdrant_client: QdrantClient, 
-    embedding_client: OpenAI,
+    embedding_client: Optional[OpenAI],
     collection_name: str, 
     model_name: str,
     embedding_dim: int,
     ids: List[str], 
     documents: List[str], 
     metadatas: List[Dict[str, Any]], 
-    batch_size: int = 100
+    batch_size: int = 100,
+    embedding_method: str = "openai",
+    fastembed_model: str = "BAAI/bge-small-en"
 ) -> None:
     """Add documents to a Qdrant collection in batches."""
     # Generate embeddings for all documents
-    print("Generating embeddings...")
-    embeddings = generate_embeddings(embedding_client, documents, model_name, embedding_dim)
-    print(f"Generated {len(embeddings)} embeddings with {embedding_dim} dimensions")
+    print(f"Generating embeddings using {embedding_method} method...")
+    
+    if embedding_method == "openai":
+        if embedding_client is None:
+            raise ValueError("OpenAI embedding client is required for openai embedding method")
+        embeddings = generate_embeddings(embedding_client, documents, model_name, embedding_dim)
+        print(f"Generated {len(embeddings)} embeddings with {embedding_dim} dimensions using OpenAI")
+    else:  # fastembed
+        embeddings = generate_embeddings_fastembed(documents, fastembed_model)
+        # Get the actual dimension of the fastembed model
+        actual_dim = len(embeddings[0]) if embeddings else embedding_dim
+        print(f"Generated {len(embeddings)} embeddings with {actual_dim} dimensions using FastEmbed")
+        embedding_dim = actual_dim  # Update embedding_dim for collection creation
     
     # Check if collection already exists and handle dimension mismatch
     try:
@@ -262,6 +299,8 @@ def main():
     parser.add_argument("--collection", default="docs", help="Qdrant collection name")
     parser.add_argument("--embedding-model", default="text-embedding-v3", help="Embedding model name")
     parser.add_argument("--embedding-dim", type=int, default=1024, help="Embedding dimension")
+    parser.add_argument("--embedding-method", choices=["openai", "fastembed"], default="openai", help="Embedding method to use (openai or fastembed)")
+    parser.add_argument("--fastembed-model", default="BAAI/bge-small-en", help="FastEmbed model name (only used with --embedding-method=fastembed)")
     parser.add_argument("--chunk-size", type=int, default=1000, help="Max chunk size (chars)")
     parser.add_argument("--max-depth", type=int, default=3, help="Recursion depth for regular URLs")
     parser.add_argument("--max-concurrent", type=int, default=10, help="Max parallel browser sessions")
@@ -270,7 +309,9 @@ def main():
 
     # Initialize clients
     qdrant_client = get_qdrant_client()
-    embedding_client = get_embedding_client()
+    embedding_client = None
+    if args.embedding_method == "openai":
+        embedding_client = get_embedding_client()
     
     # Print connection info
     print("Successfully connected to Qdrant!")
@@ -324,7 +365,9 @@ def main():
         ids, 
         documents, 
         metadatas, 
-        batch_size=args.batch_size
+        batch_size=args.batch_size,
+        embedding_method=args.embedding_method,
+        fastembed_model=args.fastembed_model
     )
 
     print(f"Successfully added {len(documents)} chunks to Qdrant collection '{args.collection}'.")

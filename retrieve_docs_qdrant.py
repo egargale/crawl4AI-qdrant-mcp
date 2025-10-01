@@ -8,10 +8,17 @@ using semantic search with embeddings.
 
 import os
 import argparse
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from openai import OpenAI
+
+# Try to import fastembed, but make it optional
+try:
+    from fastembed import TextEmbedding
+    FASTEMBED_AVAILABLE = True
+except ImportError:
+    FASTEMBED_AVAILABLE = False
 
 
 def get_qdrant_client() -> QdrantClient:
@@ -43,33 +50,55 @@ def generate_embedding(client: OpenAI, text: str, model_name: str, dimensions: i
     return resp.data[0].embedding
 
 
+def generate_embedding_fastembed(text: str, model_name: str) -> List[float]:
+    """Generate embedding for a single text using fastembed."""
+    if not FASTEMBED_AVAILABLE:
+        raise ImportError("fastembed is not installed. Please install it with: pip install fastembed")
+    
+    # Initialize the embedding model
+    embedding_model = TextEmbedding(model_name=model_name)
+    
+    # Generate embedding
+    embedding = list(embedding_model.embed([text]))[0]
+    
+    # Convert numpy array to list
+    return embedding.tolist()
+
+
 def retrieve_documents(
     qdrant_client: QdrantClient,
-    embedding_client: OpenAI,
+    embedding_client: Optional[OpenAI],
     collection_name: str,
     model_name: str,
     embedding_dim: int,
     query_text: str,
     n_results: int = 5,
-    score_threshold: float = None
+    score_threshold: float = None,
+    embedding_method: str = "openai"
 ) -> List[Dict[str, Any]]:
     """Retrieve documents from Qdrant collection based on semantic similarity.
     
     Args:
         qdrant_client: Qdrant client instance
-        embedding_client: OpenAI-compatible embedding client
+        embedding_client: OpenAI-compatible embedding client (None for fastembed)
         collection_name: Name of the Qdrant collection
         model_name: Name of the embedding model
-        embedding_dim: Dimension of embeddings
+        embedding_dim: Dimension of embeddings (ignored for fastembed)
         query_text: Text to search for
         n_results: Number of results to return
         score_threshold: Minimum similarity score (0-1) to filter results
+        embedding_method: Embedding method to use ("openai" or "fastembed")
         
     Returns:
         List of dictionaries containing retrieved documents with metadata
     """
     # Generate embedding for the query
-    query_embedding = generate_embedding(embedding_client, query_text, model_name, embedding_dim)
+    if embedding_method == "openai":
+        if embedding_client is None:
+            raise ValueError("OpenAI embedding client is required for openai embedding method")
+        query_embedding = generate_embedding(embedding_client, query_text, model_name, embedding_dim)
+    else:  # fastembed
+        query_embedding = generate_embedding_fastembed(query_text, model_name)
     
     # Query the collection
     search_result = qdrant_client.query_points(
@@ -143,6 +172,8 @@ def main():
     parser.add_argument("--collection", default="docs", help="Qdrant collection name (default: docs)")
     parser.add_argument("--embedding-model", default="text-embedding-v3", help="Embedding model name (default: text-embedding-v3)")
     parser.add_argument("--embedding-dim", type=int, default=1024, help="Embedding dimension (default: 1024)")
+    parser.add_argument("--embedding-method", choices=["openai", "fastembed"], default="openai", help="Embedding method to use (openai or fastembed)")
+    parser.add_argument("--fastembed-model", default="BAAI/bge-small-en", help="FastEmbed model name (only used with --embedding-method=fastembed)")
     parser.add_argument("--n-results", type=int, default=5, help="Number of results to return (default: 5)")
     parser.add_argument("--score-threshold", type=float, help="Minimum similarity score (0-1) to filter results")
     parser.add_argument("--full-content", action="store_true", help="Show full document content instead of preview")
@@ -155,22 +186,29 @@ def main():
     try:
         # Initialize clients
         qdrant_client = get_qdrant_client()
-        embedding_client = get_embedding_client()
+        embedding_client = None
+        if args.embedding_method == "openai":
+            embedding_client = get_embedding_client()
         
         print(f"Connected to Qdrant at: {os.getenv('QDRANT_URL')}")
         print(f"Querying collection '{args.collection}' for: '{args.query}'")
+        print(f"Using embedding method: {args.embedding_method}")
         print("-" * 50)
+        
+        # Determine model name to use
+        model_name = args.embedding_model if args.embedding_method == "openai" else args.fastembed_model
         
         # Retrieve documents
         results = retrieve_documents(
             qdrant_client=qdrant_client,
             embedding_client=embedding_client,
             collection_name=args.collection,
-            model_name=args.embedding_model,
+            model_name=model_name,
             embedding_dim=args.embedding_dim,
             query_text=args.query,
             n_results=args.n_results,
-            score_threshold=args.score_threshold
+            score_threshold=args.score_threshold,
+            embedding_method=args.embedding_method
         )
         
         # Format and display results

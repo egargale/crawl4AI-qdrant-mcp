@@ -4,7 +4,7 @@ import os
 import sys
 import argparse
 from dataclasses import dataclass
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import asyncio
 
 import dotenv
@@ -14,6 +14,13 @@ from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from openai import AsyncOpenAI, OpenAI
 from qdrant_client import QdrantClient
+
+# Try to import fastembed, but make it optional
+try:
+    from fastembed import TextEmbedding
+    FASTEMBED_AVAILABLE = True
+except ImportError:
+    FASTEMBED_AVAILABLE = False
 
 # Load environment variables from .env file
 dotenv.load_dotenv()
@@ -32,6 +39,8 @@ class RAGDeps:
     collection_name: str
     embedding_model: str
     embedding_dim: int
+    embedding_method: str = "openai"  # New field for embedding method
+    fastembed_model: str = "BAAI/bge-small-en"  # New field for fastembed model
 
 
 # Create the RAG agent with custom LLM configuration
@@ -94,31 +103,53 @@ def generate_embeddings(client: OpenAI, texts: List[str], model_name: str, dimen
     return all_embeddings
 
 
+def generate_embeddings_fastembed(texts: List[str], model_name: str) -> List[List[float]]:
+    """Generate embeddings for a list of texts using fastembed."""
+    if not FASTEMBED_AVAILABLE:
+        raise ImportError("fastembed is not installed. Please install it with: pip install fastembed")
+    
+    # Initialize the embedding model
+    embedding_model = TextEmbedding(model_name=model_name)
+    
+    # Generate embeddings
+    embeddings = list(embedding_model.embed(texts))
+    
+    # Convert numpy arrays to lists
+    return [embedding.tolist() for embedding in embeddings]
+
+
 def query_collection(
     client: QdrantClient,
-    embedding_client: OpenAI,
+    embedding_client: Optional[OpenAI],
     collection_name: str,
     model_name: str,
     embedding_dim: int,
     query_text: str,
     n_results: int = 5,
+    embedding_method: str = "openai"
 ) -> Dict[str, Any]:
     """Query a Qdrant collection for similar documents.
     
     Args:
         client: Qdrant client
-        embedding_client: OpenAI-compatible embedding client
+        embedding_client: OpenAI-compatible embedding client (None for fastembed)
         collection_name: Name of the collection
         model_name: Name of the embedding model to use
         embedding_dim: Dimension of the embedding model
         query_text: Text to search for
         n_results: Number of results to return
+        embedding_method: Embedding method to use ("openai" or "fastembed")
         
     Returns:
         Query results containing documents, metadatas, distances, and ids
     """
     # Generate embedding for the query
-    query_embedding = generate_embeddings(embedding_client, [query_text], model_name, embedding_dim)[0]
+    if embedding_method == "openai":
+        if embedding_client is None:
+            raise ValueError("OpenAI embedding client is required for openai embedding method")
+        query_embedding = generate_embeddings(embedding_client, [query_text], model_name, embedding_dim)[0]
+    else:  # fastembed
+        query_embedding = generate_embeddings_fastembed([query_text], model_name)[0]
     
     # Query the collection
     search_result = client.query_points(
@@ -182,17 +213,20 @@ async def retrieve(context: RunContext[RAGDeps], search_query: str, n_results: i
         Formatted context information from the retrieved documents.
     """
     # Get Qdrant client and embedding client
-    embedding_client = get_embedding_client()
+    embedding_client = None
+    if context.deps.embedding_method == "openai":
+        embedding_client = get_embedding_client()
     
     # Query the collection
     query_results = query_collection(
         context.deps.qdrant_client,
         embedding_client,
         context.deps.collection_name,
-        context.deps.embedding_model,
+        context.deps.embedding_model if context.deps.embedding_method == "openai" else context.deps.fastembed_model,
         context.deps.embedding_dim,
         search_query,
-        n_results=n_results
+        n_results=n_results,
+        embedding_method=context.deps.embedding_method
     )
     
     # Format the results as context
@@ -204,7 +238,9 @@ async def run_rag_agent(
     collection_name: str = "docs",
     embedding_model: str = "text-embedding-v3",
     embedding_dim: int = 1024,
-    n_results: int = 5
+    n_results: int = 5,
+    embedding_method: str = "openai",
+    fastembed_model: str = "BAAI/bge-small-en"
 ) -> str:
     """Run the RAG agent to answer a question about Sierrachart.
     
@@ -214,6 +250,8 @@ async def run_rag_agent(
         embedding_model: Name of the embedding model to use.
         embedding_dim: Dimension of the embedding model.
         n_results: Number of results to return from the retrieval.
+        embedding_method: Embedding method to use ("openai" or "fastembed").
+        fastembed_model: Name of the fastembed model to use.
         
     Returns:
         The agent's response.
@@ -223,7 +261,9 @@ async def run_rag_agent(
         qdrant_client=get_qdrant_client(),
         collection_name=collection_name,
         embedding_model=embedding_model,
-        embedding_dim=embedding_dim
+        embedding_dim=embedding_dim,
+        embedding_method=embedding_method,
+        fastembed_model=fastembed_model
     )
     
     # Run the agent
@@ -239,6 +279,8 @@ def main():
     parser.add_argument("--collection", default="docs", help="Name of the Qdrant collection")
     parser.add_argument("--embedding-model", default="text-embedding-v3", help="Name of the embedding model to use")
     parser.add_argument("--embedding-dim", type=int, default=1024, help="Dimension of the embedding model")
+    parser.add_argument("--embedding-method", choices=["openai", "fastembed"], default="openai", help="Embedding method to use (openai or fastembed)")
+    parser.add_argument("--fastembed-model", default="BAAI/bge-small-en", help="FastEmbed model name (only used with --embedding-method=fastembed)")
     parser.add_argument("--n-results", type=int, default=5, help="Number of results to return from the retrieval")
     
     args = parser.parse_args()
@@ -249,7 +291,9 @@ def main():
         collection_name=args.collection,
         embedding_model=args.embedding_model,
         embedding_dim=args.embedding_dim,
-        n_results=args.n_results
+        n_results=args.n_results,
+        embedding_method=args.embedding_method,
+        fastembed_model=args.fastembed_model
     ))
     
     print("\nResponse:")
