@@ -55,18 +55,19 @@ class WebsiteDownloader:
             llm_base_url: Base URL for the LLM API endpoint
             use_llm_extraction: If True, use LLM-based extraction; if False, use standard markdown
             output_format: Output format for extracted data ("json" or "jsonl")
-            consolidate_output: If True, consolidate all pages into single files
+            consolidate_output: If True, consolidate all pages into single files (only applicable to jsonl format)
         """
         self.base_url = base_url.rstrip('/')
         self.output_dir = Path(output_dir)
         self.max_depth = max_depth
         self.max_concurrent = max_concurrent
         self.llm_provider = llm_provider
-        self.llm_api_key = llm_api_key or os.getenv("OPENAI_API_KEY") or os.getenv("DASHSCOPE_API_KEY")
+        self.llm_api_key = llm_api_key or os.getenv("DASHSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY")
         self.llm_base_url = llm_base_url
         self.use_llm_extraction = use_llm_extraction
         self.output_format = output_format
-        self.consolidate_output = consolidate_output
+        # Only apply consolidate_output to jsonl format
+        self.consolidate_output = consolidate_output and (output_format == "jsonl")
         self.visited_urls: Set[str] = set()
         self.all_extracted_data = []  # For consolidated JSONL output
         
@@ -266,6 +267,17 @@ class WebsiteDownloader:
                     f.write(json.dumps(entry) + '\n')
             print(f"Saved consolidated JSONL: {consolidated_filepath}")
             print(f"Total entries: {len(self.all_extracted_data)}")
+            
+            # If consolidate_output is True, delete individual JSONL files to avoid duplication
+            if self.consolidate_output:
+                for file in self.output_dir.glob("*.jsonl"):
+                    # Skip the consolidated file itself
+                    if file.name != "consolidated_data.jsonl":
+                        try:
+                            file.unlink()
+                            print(f"Deleted individual JSONL file: {file}")
+                        except Exception as e:
+                            print(f"Error deleting {file}: {e}")
     
     async def crawl_recursive(self):
         """Crawl the website recursively and save pages in markdown format."""
@@ -382,7 +394,10 @@ class WebsiteDownloader:
                                 self.save_content(result.url, result.markdown)
                         else:
                             # Save standard markdown
-                            self.save_content(result.url, result.markdown)
+                            try:
+                                self.save_content(result.url, result.markdown)
+                            except Exception as e:
+                                print(f"Error saving content for {result.url}: {e}")
                         
                         # Collect internal links for next depth
                         if hasattr(result, 'links') and result.links:
@@ -405,8 +420,8 @@ class WebsiteDownloader:
         print(f"\nCrawling completed. Total pages downloaded: {len(self.visited_urls)}")
         print(f"Files saved to: {self.output_dir.absolute()}")
         
-        # Save consolidated JSONL if we have extracted data
-        if self.use_llm_extraction and self.all_extracted_data:
+        # Save consolidated JSONL if we have extracted data and consolidation is enabled
+        if self.use_llm_extraction and self.all_extracted_data and self.consolidate_output:
             self.save_consolidated_jsonl()
         
         # Show LLM usage statistics if available (disabled to remove usage history output)
@@ -441,6 +456,7 @@ OPTIONAL ARGUMENTS:
     --llm-api-key STR      API key for the LLM provider (default: OPENAI_API_KEY or DASHSCOPE_API_KEY env var)
     --llm-base-url STR     Base URL for the LLM API endpoint (default: DashScope compatible endpoint)
     --no-llm               Disable LLM extraction and use standard markdown
+    --consolidate-output   Consolidate all JSONL data into a single file and delete individual JSONL files
     -h, --help             Show this help message
 
 EXAMPLES:
@@ -462,13 +478,16 @@ EXAMPLES:
     # Download without LLM extraction (standard markdown only)
     python website_downloader_jsonl.py https://example.com --no-llm
 
+    # Consolidate output into a single JSONL file
+    python website_downloader_jsonl.py https://example.com --consolidate-output
+
 OUTPUT:
     The script creates markdown files in the output directory:
     
     With LLM extraction (default):
     - *.md files contain structured content with title, summary, key points, and main content
     - *.jsonl files contain the extracted data in JSONL format for RAG use
-    - consolidated_data.jsonl contains all extracted data in a single file
+    - consolidated_data.jsonl contains all extracted data in a single file (when --consolidate-output is used)
     
     Without LLM extraction (--no-llm):
     - *.md files contain standard markdown
@@ -477,8 +496,8 @@ OUTPUT:
     The JSONL format includes the URL in each entry for easy reference and RAG applications.
 
 ENVIRONMENT VARIABLES:
-    OPENAI_API_KEY         API key for OpenAI models (if not provided via --llm-api-key)
     DASHSCOPE_API_KEY      API key for DashScope models (if not provided via --llm-api-key)
+    OPENAI_API_KEY         API key for OpenAI models (if not provided via --llm-api-key)
 """
     print(help_text)
 
@@ -501,11 +520,13 @@ async def main():
     parser.add_argument("--llm-provider", default="openai/qwen-turbo",
                        help="LLM provider string (default: openai/qwen-turbo)")
     parser.add_argument("--llm-api-key", default=None,
-                       help="API key for the LLM provider (default: OPENAI_API_KEY or DASHSCOPE_API_KEY env var)")
+                       help="API key for the LLM provider (default: DASHSCOPE_API_KEY or OPENAI_API_KEY env var)")
     parser.add_argument("--llm-base-url", default="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
                        help="Base URL for the LLM API endpoint (default: DashScope compatible endpoint)")
     parser.add_argument("--no-llm", action="store_true",
                        help="Disable LLM extraction and use standard markdown")
+    parser.add_argument("--consolidate-output", action="store_true",
+                       help="Consolidate all JSONL data into a single file and delete individual JSONL files")
     parser.add_argument("-h", "--help", action="store_true",
                        help="Show this help message")
     
@@ -540,7 +561,8 @@ async def main():
         "llm_provider": args.llm_provider,
         "llm_api_key": args.llm_api_key,
         "llm_base_url": args.llm_base_url,
-        "use_llm_extraction": not args.no_llm
+        "use_llm_extraction": not args.no_llm,
+        "consolidate_output": args.consolidate_output
     }
     
     print("Website Downloader with LLM Extraction")
@@ -552,8 +574,9 @@ async def main():
     print(f"LLM Provider: {config['llm_provider']}")
     print(f"LLM Base URL: {config['llm_base_url']}")
     print(f"LLM Extraction: {'Enabled' if config['use_llm_extraction'] else 'Disabled'}")
+    print(f"Consolidate Output: {'Enabled' if config['consolidate_output'] else 'Disabled'}")
     if config['use_llm_extraction'] and not config['llm_api_key']:
-        print("Note: Using OPENAI_API_KEY or DASHSCOPE_API_KEY environment variable for LLM authentication")
+        print("Note: Using DASHSCOPE_API_KEY or OPENAI_API_KEY environment variable for LLM authentication")
     print()
     
     downloader = WebsiteDownloader(**config)

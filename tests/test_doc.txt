@@ -1,4 +1,0 @@
-This is a test document about Qdrant and fastembed integration.
-Qdrant is a vector database that can be used with fastembed for efficient embeddings.
-Fastembed is a Python library that provides fast and accurate embeddings.
-The integration between Qdrant and fastembed makes it easy to store and search embeddings.
