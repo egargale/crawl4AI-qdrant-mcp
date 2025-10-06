@@ -46,6 +46,9 @@ Examples:
   # Start with stdio transport (for MCP clients)
   python fastmcp_rag_server.py --transport stdio
 
+  # Start with SSE transport (Server-Sent Events)
+  python fastmcp_rag_server.py --transport sse
+
 Environment Variables:
   See .env.fastmcp.template for available configuration options.
   Key variables:
@@ -61,7 +64,7 @@ Environment Variables:
     # Server configuration arguments
     parser.add_argument("--host", default=None, help="Server host address (overrides config)")
     parser.add_argument("--port", type=int, default=None, help="Server port (overrides config)")
-    parser.add_argument("--transport", choices=["http", "stdio", "websocket"],
+    parser.add_argument("--transport", choices=["stdio", "sse"],
                        default=None, help="Transport protocol (overrides config)")
 
     # Feature flags

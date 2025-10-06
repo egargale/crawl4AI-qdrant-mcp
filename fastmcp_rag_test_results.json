@@ -1,0 +1,86 @@
+[
+  {
+    "test_name": "Server Configuration - server_name",
+    "success": true,
+    "message": "server_name: Enhanced Semantic Search RAG",
+    "duration": 6.67572021484375e-06,
+    "timestamp": 1759756955.9922078
+  },
+  {
+    "test_name": "Server Configuration - embedding_method",
+    "success": true,
+    "message": "embedding_method: sentence-transformers",
+    "duration": 0.00014209747314453125,
+    "timestamp": 1759756955.9923432
+  },
+  {
+    "test_name": "Server Configuration - qdrant_url",
+    "success": true,
+    "message": "qdrant_url: http://localhost:6333",
+    "duration": 0.00026226043701171875,
+    "timestamp": 1759756955.9924629
+  },
+  {
+    "test_name": "Server Configuration - embedding_dimension",
+    "success": true,
+    "message": "embedding_dimension: 384",
+    "duration": 0.0003814697265625,
+    "timestamp": 1759756955.9925823
+  },
+  {
+    "test_name": "Direct Server Functionality - Qdrant connection",
+    "success": true,
+    "message": "Connected to 6 collections",
+    "duration": 0.0073015689849853516,
+    "timestamp": 1759756956.00002
+  },
+  {
+    "test_name": "Direct Server Functionality - embedding model",
+    "success": true,
+    "message": "Generated 384-dimensional embedding",
+    "duration": 0.024088382720947266,
+    "timestamp": 1759756956.0168066
+  },
+  {
+    "test_name": "Direct Server Functionality - direct document add",
+    "success": true,
+    "message": "Added document to test_collection_1759756956",
+    "duration": 0.24501562118530273,
+    "timestamp": 1759756956.2620108
+  },
+  {
+    "test_name": "Direct Server Functionality - direct search",
+    "success": true,
+    "message": "Found 1 results",
+    "duration": 0.015311479568481445,
+    "timestamp": 1759756956.2777717
+  },
+  {
+    "test_name": "MCP Tool Interface Testing - tool registration",
+    "success": true,
+    "message": "Tools registered as nested functions (expected MCP behavior)",
+    "duration": 5.4836273193359375e-06,
+    "timestamp": 1759756956.289154
+  },
+  {
+    "test_name": "MCP Tool Interface Testing - expected tools",
+    "success": true,
+    "message": "Identified 7 expected tools",
+    "duration": 0.00043129920959472656,
+    "timestamp": 1759756956.2895799
+  },
+  {
+    "test_name": "Error Handling - nonexistent collection",
+    "success": true,
+    "message": "Correctly raised error: UnexpectedResponse",
+    "duration": 0.006289005279541016,
+    "timestamp": 1759756956.296038
+  },
+  {
+    "test_name": "Error Handling - empty embedding",
+    "success": true,
+    "message": "Handled empty text: 384 dimensions",
+    "duration": 0.021735191345214844,
+    "timestamp": 1759756956.311484
+  }
+]

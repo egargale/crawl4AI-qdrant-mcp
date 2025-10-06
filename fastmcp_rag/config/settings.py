@@ -27,13 +27,14 @@ class FastMCPRAGConfig(BaseSettings):
     server_name: str = Field(default="Enhanced Semantic Search RAG", description="Server name for identification")
     host: str = Field(default="0.0.0.0", description="Server host address")
     port: int = Field(default=8000, description="Server port")
-    transport: str = Field(default="http", description="Transport protocol (http, stdio)")
+    transport: str = Field(default="stdio", description="Transport protocol (stdio, sse)")
     debug: bool = Field(default=False, description="Enable debug mode")
 
     # Database Configuration
     qdrant_url: str = Field(..., description="Qdrant server URL")
     qdrant_api_key: Optional[str] = Field(default=None, description="Qdrant API key (optional for local)")
     qdrant_timeout: int = Field(default=30, description="Qdrant connection timeout in seconds")
+    skip_qdrant_check: bool = Field(default=False, description="Skip Qdrant connection check (for development)")
 
     # Embedding Configuration
     embedding_method: str = Field(
@@ -118,7 +119,7 @@ class FastMCPRAGConfig(BaseSettings):
     @classmethod
     def validate_transport(cls, v):
         """Validate transport protocol."""
-        allowed_transports = ["http", "stdio", "websocket"]
+        allowed_transports = ["stdio", "sse"]
         if v not in allowed_transports:
             raise ValueError(f"transport must be one of: {allowed_transports}")
         return v

@@ -1,0 +1,27 @@
+2025-10-06 14:52:30,676 - __main__ - INFO - Logging initialized at level: INFO
+2025-10-06 14:52:31,704 - httpx - INFO - HTTP Request: GET http://localhost:6333 "HTTP/1.1 200 OK"
+2025-10-06 14:52:31,715 - httpx - INFO - HTTP Request: GET http://localhost:6333/collections "HTTP/1.1 200 OK"
+2025-10-06 14:52:31,717 - __main__ - INFO - Connected to Qdrant at http://localhost:6333
+2025-10-06 14:52:31,719 - __main__ - INFO - Available collections: ['fastmcp_docs', 'website_docs', 'fastmcp_docs_md', 'test_collection_1759755032', 'fastmcp_docs_no_query', 'test_docs']
+2025-10-06 14:52:31,720 - __main__ - INFO - Embedding method dashscope configured (to be implemented)
+2025-10-06 14:52:31,721 - __main__ - INFO - All server components initialized successfully
+2025-10-06 14:52:31,735 - __main__ - INFO - FastMCP RAG Server initialized successfully
+2025-10-06 14:52:31,736 - __main__ - INFO - Starting FastMCP RAG Server with stdio transport
+2025-10-06 14:52:31,736 - __main__ - INFO - Transport: stdio
+2025-10-06 14:52:31,736 - __main__ - INFO - Embedding method: dashscope
+2025-10-06 14:52:31,737 - __main__ - INFO - Qdrant URL: http://localhost:6333
+2025-10-06 14:52:31,737 - FastMCP.fastmcp.server.server - INFO - Starting server "Enhanced Semantic Search RAG"...
+2025-10-06 14:57:38,577 - __main__ - INFO - Server stopped by user
+2025-10-06 14:58:35,597 - __main__ - INFO - Logging initialized at level: INFO
+2025-10-06 14:58:36,466 - httpx - INFO - HTTP Request: GET http://localhost:6333 "HTTP/1.1 200 OK"
+2025-10-06 14:58:36,479 - httpx - INFO - HTTP Request: GET http://localhost:6333/collections "HTTP/1.1 200 OK"
+2025-10-06 14:58:36,482 - __main__ - INFO - Connected to Qdrant at http://localhost:6333
+2025-10-06 14:58:36,482 - __main__ - INFO - Available collections: ['fastmcp_docs', 'website_docs', 'fastmcp_docs_md', 'test_collection_1759755032', 'fastmcp_docs_no_query', 'test_docs']
+2025-10-06 14:58:36,482 - __main__ - INFO - Embedding method dashscope configured (to be implemented)
+2025-10-06 14:58:36,482 - __main__ - INFO - All server components initialized successfully
+2025-10-06 14:58:36,494 - __main__ - INFO - FastMCP RAG Server initialized successfully
+2025-10-06 14:58:36,494 - __main__ - INFO - Starting FastMCP RAG Server with stdio transport
+2025-10-06 14:58:36,495 - __main__ - INFO - Transport: stdio
+2025-10-06 14:58:36,495 - __main__ - INFO - Embedding method: dashscope
+2025-10-06 14:58:36,495 - __main__ - INFO - Qdrant URL: http://localhost:6333
+2025-10-06 14:58:36,495 - FastMCP.fastmcp.server.server - INFO - Starting server "Enhanced Semantic Search RAG"...

@@ -8,6 +8,7 @@ enhanced semantic search RAG system.
 import asyncio
 import logging
 import os
+import sys
 import time
 import uuid
 from datetime import datetime
@@ -19,7 +20,11 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
 from sentence_transformers import SentenceTransformer
 
-from .config import FastMCPRAGConfig
+try:
+    from .config import FastMCPRAGConfig
+except ImportError:
+    # For direct execution or when running as script
+    from config import FastMCPRAGConfig
 
 
 class EnhancedRAGServer:
@@ -107,13 +112,32 @@ class EnhancedRAGServer:
                 timeout=self.config.qdrant_timeout
             )
 
-            # Test connection
-            collections = self.qdrant_client.get_collections()
-            self.logger.info(f"Connected to Qdrant at {self.config.qdrant_url}")
-            self.logger.info(f"Available collections: {[c.name for c in collections.collections]}")
+            # Test connection (unless skipped)
+            if not self.config.skip_qdrant_check:
+                collections = self.qdrant_client.get_collections()
+                self.logger.info(f"Connected to Qdrant at {self.config.qdrant_url}")
+                self.logger.info(f"Available collections: {[c.name for c in collections.collections]}")
+            else:
+                self.logger.warning(f"Skipping Qdrant connection check (skip_qdrant_check=True)")
+                self.logger.info(f"Qdrant client configured for {self.config.qdrant_url}")
 
         except Exception as e:
             self.logger.error(f"Failed to connect to Qdrant: {e}")
+            if "10061" in str(e) or "actively refused" in str(e):
+                self.logger.error("=" * 60)
+                self.logger.error("QDRANT CONNECTION FAILED")
+                self.logger.error("=" * 60)
+                self.logger.error("Qdrant server is not running or not accessible.")
+                self.logger.error(f"Expected URL: {self.config.qdrant_url}")
+                self.logger.error("")
+                self.logger.error("Solutions:")
+                self.logger.error("1. Start Qdrant with Docker: docker run -p 6333:6333 qdrant/qdrant")
+                self.logger.error("2. Use environment variable: set SKIP_QDRANT_CHECK=true")
+                self.logger.error("3. Set QDRANT_URL to point to your Qdrant instance")
+                self.logger.error("")
+                self.logger.error("For development without Qdrant:")
+                self.logger.error("set SKIP_QDRANT_CHECK=true")
+                self.logger.error("=" * 60)
             raise
 
     def _initialize_embedding_model(self):
@@ -610,15 +634,22 @@ Please provide your answer:"""
         if not self.is_initialized:
             raise RuntimeError("Server not properly initialized")
 
-        # Use config defaults if not provided
+        # Build run arguments based on transport type
         run_kwargs = {
             "transport": self.config.transport,
-            "host": self.config.host,
-            "port": self.config.port,
             **kwargs
         }
 
-        self.logger.info(f"Starting FastMCP RAG Server on {self.config.host}:{self.config.port}")
+        # Add host/port only for SSE transport
+        if self.config.transport == "sse":
+            if self.config.host:
+                run_kwargs["host"] = self.config.host
+            if self.config.port:
+                run_kwargs["port"] = self.config.port
+            self.logger.info(f"Starting FastMCP RAG Server on {self.config.host}:{self.config.port}")
+        else:
+            self.logger.info(f"Starting FastMCP RAG Server with {self.config.transport} transport")
+
         self.logger.info(f"Transport: {self.config.transport}")
         self.logger.info(f"Embedding method: {self.config.embedding_method}")
         self.logger.info(f"Qdrant URL: {self.config.qdrant_url}")
@@ -658,6 +689,12 @@ def main():
     args = parser.parse_args()
 
     try:
+        # Import config loader
+        try:
+            from .config import load_config_from_env
+        except ImportError:
+            from config import load_config_from_env
+
         # Load configuration
         if args.config:
             # Load from file (to be implemented)
