@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/Enrico/source/repos/crawl4ai-agent-v2/**)",
+      "WebFetch(domain:gofastmcp.com)",
+      "WebSearch",
+      "mcp__MCP_DOCKER__webpage-to-markdown",
+      "mcp__MCP_DOCKER__firecrawl_search",
+      "mcp__MCP_DOCKER__firecrawl_scrape",
+      "Bash(mkdir:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(uv run:*)",
+      "Bash(python:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

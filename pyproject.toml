@@ -52,6 +52,7 @@ dependencies = [
     "fastapi==0.115.9",
     "fastavro==1.10.0",
     "fastembed>=0.7.3",
+    "fastmcp>=2.2.6",
     "filelock==3.18.0",
     "flatbuffers==25.2.10",
     "fpdf2>=2.8.4",
