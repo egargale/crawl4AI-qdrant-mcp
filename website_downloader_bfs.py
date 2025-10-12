@@ -14,7 +14,7 @@ import asyncio
 import argparse
 import urllib.parse
 from pathlib import Path
-from typing import Set, List, Optional
+from typing import Set, List, Optional, Union
 from pydantic import BaseModel, Field
 from crawl4ai import (
     AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode,
@@ -41,6 +41,7 @@ class WebsiteDownloaderBFS:
                  llm_api_key: Optional[str] = None,
                  llm_base_url: str = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
                  use_llm_extraction: bool = True,
+                 json_output_only: bool = False,
                  output_format: str = "jsonl",
                  consolidate_output: bool = False):
         """
@@ -56,6 +57,7 @@ class WebsiteDownloaderBFS:
             llm_api_key: API key for the LLM provider (if required)
             llm_base_url: Base URL for the LLM API endpoint
             use_llm_extraction: If True, use LLM-based extraction; if False, use standard markdown
+            json_output_only: If True, only generate JSON files, no markdown files
             output_format: Output format for extracted data ("json" or "jsonl")
             consolidate_output: If True, consolidate all pages into single files (only applicable to jsonl format)
         """
@@ -68,6 +70,7 @@ class WebsiteDownloaderBFS:
         self.llm_api_key = llm_api_key or os.getenv("DASHSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY")
         self.llm_base_url = llm_base_url
         self.use_llm_extraction = use_llm_extraction
+        self.json_output_only = json_output_only
         self.output_format = output_format
         # Only apply consolidate_output to jsonl format
         self.consolidate_output = consolidate_output and (output_format == "jsonl")
@@ -124,167 +127,210 @@ class WebsiteDownloaderBFS:
         try:
             filename = self.url_to_filename(url)
             filepath = self.output_dir / filename
-            
+
             # Create subdirectories if needed
             filepath.parent.mkdir(parents=True, exist_ok=True)
-            
+
+            # Handle JSON-only mode
+            if self.json_output_only:
+                # Only save JSONL data
+                if self.use_llm_extraction and extracted_data and (isinstance(extracted_data, dict) or isinstance(extracted_data, list)):
+                    self._save_jsonl_data(url, extracted_data, filepath)
+                    print(f"Saved JSONL: {filepath.with_suffix('.jsonl')}")
+                else:
+                    print(f"Warning: JSON-only mode requires LLM extraction. Skipping {url}")
+                return
+
+            # Normal mode: Save markdown files
             with open(filepath, 'w', encoding='utf-8') as f:
-                f.write(f"# {url}\n\n")
-                
-                if self.use_llm_extraction and extracted_data:
-                    # Handle different formats of extracted data
-                    if isinstance(extracted_data, dict):
-                        # Handle nested JSON structure in main_content
-                        main_content = extracted_data.get('main_content', content)
-                        # If main_content looks like a JSON string, try to parse it
-                        if isinstance(main_content, str) and main_content.strip().startswith('{'):
-                            try:
-                                parsed_content = json.loads(main_content)
-                                # If it's a parsed dict with nested content, extract it
-                                if isinstance(parsed_content, dict) and 'main_content' in parsed_content:
-                                    # Use the nested main_content
-                                    main_content = parsed_content['main_content']
-                                    # Also update title, summary and key_points if they exist in nested content
-                                    if 'title' in parsed_content:
-                                        extracted_data['title'] = parsed_content['title']
-                                    if 'summary' in parsed_content:
-                                        extracted_data['summary'] = parsed_content['summary']
-                                    if 'key_points' in parsed_content:
-                                        extracted_data['key_points'] = parsed_content['key_points']
-                            except json.JSONDecodeError:
-                                # If parsing fails, keep the original content
-                                pass
-                        
-                        # Write proper markdown structure
-                        f.write(f"## {extracted_data.get('title', 'Untitled')}\n\n")
-                        f.write(f"**Summary:** {extracted_data.get('summary', 'No summary available')}\n\n")
-                        
-                        # Write key points if available
-                        if extracted_data.get('key_points'):
-                            f.write("### Key Points\n\n")
-                            for point in extracted_data['key_points']:
-                                f.write(f"- {point}\n")
-                            f.write("\n")
-                        
-                        # Write main content
-                        f.write("### Content\n\n")
-                        f.write(f"{main_content}\n\n")
-                        
-                        # Write metadata if available
-                        if extracted_data.get('metadata'):
-                            f.write("### Metadata\n\n")
-                            for key, value in extracted_data['metadata'].items():
-                                f.write(f"- **{key}:** {value}\n")
-                            f.write("\n")
-                    else:
-                        # Fallback for non-dict extracted data
-                        f.write("## Extracted Content\n\n")
-                        f.write(f"```\n{extracted_data}\n```\n")
+                if self.use_llm_extraction and extracted_data and (isinstance(extracted_data, dict) or isinstance(extracted_data, list)):
+                    # Handle list of extracted objects
+                    if isinstance(extracted_data, list) and extracted_data:
+                        # Use the first item from the list
+                        extracted_data = extracted_data[0]
+
+                    # Write proper markdown structure from extracted data
+                    f.write(f"# {extracted_data.get('title', 'Untitled')}\n\n")
+                    f.write(f"**URL:** {url}\n\n")
+                    f.write(f"**Summary:** {extracted_data.get('summary', 'No summary available')}\n\n")
+
+                    # Write key points if available
+                    if extracted_data.get('key_points'):
+                        f.write("## Key Points\n\n")
+                        for point in extracted_data['key_points']:
+                            f.write(f"- {point}\n")
+                        f.write("\n")
+
+                    # Write main content
+                    f.write("## Content\n\n")
+                    main_content = extracted_data.get('main_content', content)
+                    # Convert plain text to markdown format
+                    main_content = self._text_to_markdown(main_content)
+                    f.write(f"{main_content}\n\n")
+
+                    # Write metadata if available
+                    if extracted_data.get('metadata'):
+                        f.write("## Metadata\n\n")
+                        for key, value in extracted_data['metadata'].items():
+                            f.write(f"- **{key}:** {value}\n")
+                        f.write("\n")
+
+                    # Save JSONL data alongside markdown
+                    self._save_jsonl_data(url, extracted_data, filepath)
                 else:
                     # Save standard markdown
+                    f.write(f"# {url}\n\n")
                     f.write(content)
-                
+
                 print(f"Saved: {filepath}")
-                
-                # Also save the extracted JSON data if available
-                if self.use_llm_extraction and extracted_data:
-                    jsonl_filepath = filepath.with_suffix('.jsonl')
-                    
-                    # Handle different formats of extracted data for JSONL
-                    if isinstance(extracted_data, dict):
-                        # Process nested JSON in main_content for JSONL as well
-                        processed_extracted_data = extracted_data.copy()
-                        main_content = extracted_data.get('main_content', '')
-                        # If main_content looks like a JSON string, try to parse it
-                        if isinstance(main_content, str) and main_content.strip().startswith('{'):
-                            try:
-                                parsed_content = json.loads(main_content)
-                                # If it's a parsed dict with nested content, extract it
-                                if isinstance(parsed_content, dict) and 'main_content' in parsed_content:
-                                    # Use the nested main_content
-                                    processed_extracted_data['main_content'] = parsed_content['main_content']
-                                    # Also update title, summary and key_points if they exist in nested content
-                                    if 'title' in parsed_content:
-                                        processed_extracted_data['title'] = parsed_content['title']
-                                    if 'summary' in parsed_content:
-                                        processed_extracted_data['summary'] = parsed_content['summary']
-                                    if 'key_points' in parsed_content:
-                                        processed_extracted_data['key_points'] = parsed_content['key_points']
-                            except json.JSONDecodeError:
-                                # If parsing fails, keep the original content
-                                pass
-                        
-                        # Expected format: dictionary with title, summary, key_points, etc.
-                        jsonl_entry = {
-                            "url": url,
-                            "title": processed_extracted_data.get('title', 'Untitled'),
-                            "summary": processed_extracted_data.get('summary', ''),
-                            "main_content": processed_extracted_data.get('main_content', ''),
-                            "key_points": processed_extracted_data.get('key_points', []),
-                            "metadata": processed_extracted_data.get('metadata', {})
-                        }
-                        with open(jsonl_filepath, 'a', encoding='utf-8') as jsonl_f:
-                            jsonl_f.write(json.dumps(jsonl_entry) + '\n')
-                        print(f"Saved JSONL: {jsonl_filepath}")
-                        
-                        # Also add to consolidated data for potential single file output
-                        self.all_extracted_data.append(jsonl_entry)
-                        
-                    elif isinstance(extracted_data, list):
-                        # Alternative format: list of extracted blocks
-                        # Process each item in the list
-                        jsonl_entries = []
-                        for i, item in enumerate(extracted_data):
-                            if isinstance(item, dict):
-                                # If it's a dict, try to extract meaningful data
-                                jsonl_entry = {
-                                    "url": url,
-                                    "title": item.get('title', f'Extracted Block {i+1}'),
-                                    "summary": item.get('summary', ''),
-                                    "main_content": item.get('content', str(item)),
-                                    "key_points": item.get('key_points', []),
-                                    "metadata": item.get('metadata', {})
-                                }
-                            else:
-                                # If it's not a dict, convert to string and use as content
-                                jsonl_entry = {
-                                    "url": url,
-                                    "title": f'Extracted Block {i+1}',
-                                    "summary": '',
-                                    "main_content": str(item),
-                                    "key_points": [],
-                                    "metadata": {}
-                                }
-                            jsonl_entries.append(jsonl_entry)
-                        
-                        # Write all entries to JSONL file
-                        with open(jsonl_filepath, 'a', encoding='utf-8') as jsonl_f:
-                            for entry in jsonl_entries:
-                                jsonl_f.write(json.dumps(entry) + '\n')
-                        print(f"Saved JSONL: {jsonl_filepath}")
-                        
-                        # Add all entries to consolidated data
-                        self.all_extracted_data.extend(jsonl_entries)
-                        
-                    else:
-                        # Fallback: convert to string and create a basic entry
-                        jsonl_entry = {
-                            "url": url,
-                            "title": 'Extracted Content',
-                            "summary": '',
-                            "main_content": str(extracted_data),
-                            "key_points": [],
-                            "metadata": {}
-                        }
-                        with open(jsonl_filepath, 'a', encoding='utf-8') as jsonl_f:
-                            jsonl_f.write(json.dumps(jsonl_entry) + '\n')
-                        print(f"Saved JSONL: {jsonl_filepath}")
-                        
-                        # Also add to consolidated data
-                        self.all_extracted_data.append(jsonl_entry)
-                    
+
         except Exception as e:
             print(f"Error saving {url}: {str(e)}")
+
+    def _text_to_markdown(self, text: str) -> str:
+        """Convert plain text content to markdown format."""
+        if not isinstance(text, str):
+            text = str(text)
+
+        # Convert paragraphs separated by double newlines to markdown
+        lines = text.split('\n')
+        markdown_lines = []
+        code_block = False
+
+        for line in lines:
+            stripped = line.strip()
+
+            # Handle code blocks
+            if stripped.startswith('```'):
+                code_block = not code_block
+                markdown_lines.append(line)
+                continue
+
+            if code_block:
+                markdown_lines.append(line)
+                continue
+
+            # Skip empty lines
+            if not stripped:
+                markdown_lines.append('')
+                continue
+
+            # Handle headers (if they look like headers)
+            if stripped.startswith(('# ', '## ', '### ')):
+                markdown_lines.append(stripped)
+            # Handle bullet points
+            elif stripped.startswith(('-', '*', '+')):
+                markdown_lines.append(stripped)
+            # Handle numbered lists
+            elif stripped[0].isdigit() and len(stripped) > 1 and stripped[1] in ('.', ')'):
+                markdown_lines.append(stripped)
+            else:
+                # Regular paragraph
+                markdown_lines.append(stripped)
+
+        return '\n'.join(markdown_lines)
+
+    def _parse_llm_response(self, response: str) -> dict:
+        """Parse LLM response and extract structured data."""
+        if not response or not isinstance(response, str):
+            return {}
+
+        # Clean the response
+        response = response.strip()
+
+        # Try to parse as JSON directly
+        try:
+            return json.loads(response)
+        except json.JSONDecodeError:
+            pass
+
+        # Try to extract JSON from markdown code blocks
+        if response.startswith('```json'):
+            # Extract JSON from markdown code block
+            end_pos = response.find('```', 7)
+            if end_pos != -1:
+                json_str = response[7:end_pos].strip()
+                try:
+                    return json.loads(json_str)
+                except json.JSONDecodeError:
+                    pass
+        elif response.startswith('```'):
+            # Try to find JSON in any code block
+            lines = response.split('\n')
+            json_lines = []
+            in_code_block = False
+
+            for line in lines:
+                if line.strip().startswith('```'):
+                    in_code_block = not in_code_block
+                    if in_code_block and 'json' in line.lower():
+                        continue  # Skip the opening line
+                    elif not in_code_block:
+                        break  # End of code block
+                    continue
+
+                if in_code_block:
+                    json_lines.append(line)
+
+            if json_lines:
+                try:
+                    json_str = '\n'.join(json_lines).strip()
+                    return json.loads(json_str)
+                except json.JSONDecodeError:
+                    pass
+
+        # Try to find JSON-like structures in the text
+        import re
+        # Look for JSON objects between { and }
+        json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+        matches = re.findall(json_pattern, response, re.DOTALL)
+
+        for match in matches:
+            try:
+                return json.loads(match)
+            except json.JSONDecodeError:
+                continue
+
+        # If all else fails, create a basic structure
+        return {
+            "title": "Extracted Content",
+            "summary": "Content extraction completed but structured data parsing failed.",
+            "main_content": response,
+            "key_points": [],
+            "metadata": {"parsing_error": True}
+        }
+
+    def _save_jsonl_data(self, url: str, extracted_data: Union[dict, list], filepath: Path):
+        """Save extracted data as JSONL."""
+        try:
+            jsonl_filepath = filepath.with_suffix('.jsonl')
+
+            # Handle list of extracted objects
+            if isinstance(extracted_data, list) and extracted_data:
+                # Use the first item from the list for single page processing
+                extracted_data = extracted_data[0]
+
+            # Create JSONL entry
+            jsonl_entry = {
+                "url": url,
+                "title": extracted_data.get('title', 'Untitled'),
+                "summary": extracted_data.get('summary', ''),
+                "main_content": extracted_data.get('main_content', ''),
+                "key_points": extracted_data.get('key_points', []),
+                "metadata": extracted_data.get('metadata', {})
+            }
+
+            # Write to JSONL file
+            with open(jsonl_filepath, 'w', encoding='utf-8') as jsonl_f:
+                jsonl_f.write(json.dumps(jsonl_entry, ensure_ascii=False) + '\n')
+
+            print(f"Saved JSONL: {jsonl_filepath}")
+
+            # Add to consolidated data
+            self.all_extracted_data.append(jsonl_entry)
+
+        except Exception as e:
+            print(f"Error saving JSONL data for {url}: {str(e)}")
     
     def save_consolidated_jsonl(self):
         """Save all extracted data to a single JSONL file for RAG use."""
@@ -313,16 +359,27 @@ class WebsiteDownloaderBFS:
         browser_config = BrowserConfig(
             headless=True,
             verbose=False,
+            text_mode=True,  # Disable images for better performance
             extra_args=[
                 "--disable-gpu",
-                "--disable-dev-shm-usage", 
+                "--disable-dev-shm-usage",
                 "--no-sandbox",
                 "--disable-web-security",
                 "--disable-features=IsolateOrigins,site-per-process",
                 "--disable-background-timer-throttling",
                 "--disable-backgrounding-occluded-windows",
                 "--disable-renderer-backgrounding",
-                "--disable-ipc-flooding-protection"
+                "--disable-ipc-flooding-protection",
+                "--disable-extensions",
+                "--disable-plugins",
+                "--disable-images",
+                "--disable-javascript-harmony-shipping",
+                "--disable-background-networking",
+                "--disable-default-apps",
+                "--disable-sync",
+                "--disable-translate",
+                "--hide-scrollbars",
+                "--mute-audio"
             ],
         )
         
@@ -344,14 +401,25 @@ class WebsiteDownloaderBFS:
                         llm_config=llm_config,
                         schema=ExtractedContent.model_json_schema(),
                         extraction_type="schema",
-                        instruction="""Extract and structure the content from this webpage.
-                        Provide a clear title, concise summary, the main content cleaned and organized,
-                        and key points. Retain any code example and any framework and function explanation.
-                        Focus on the most important information and remove noise like navigation, ads, and irrelevant content.""",
+                        instruction="""Extract and structure the content from this webpage according to the JSON schema provided.
+
+                        CRITICAL: You must return a valid JSON object that exactly matches the schema with these fields:
+                        - title: The main title of the page
+                        - summary: A concise summary (2-3 sentences)
+                        - main_content: The cleaned main content in plain text format
+                        - key_points: Array of important bullet points
+                        - metadata: Object with additional page information
+
+                        IMPORTANT:
+                        - Return ONLY valid JSON, no markdown formatting
+                        - Do not wrap your response in ```json``` or any other markdown
+                        - Ensure all text content is plain text, not markdown
+                        - Include code examples but format them as plain text
+                        - Focus on the most important information and remove noise like navigation, ads, and irrelevant content""",
                         chunk_token_threshold=2000,
                         overlap_rate=0.1,
                         apply_chunking=True,
-                        input_format="markdown",
+                        input_format="html",  # Change from markdown to html for better extraction
                         extra_args={"temperature": 0.1, "max_tokens": 2000},
                         verbose=False  # Reduce LLM verbosity
                     )
@@ -364,14 +432,18 @@ class WebsiteDownloaderBFS:
         # Configure crawl with BFS strategy
         md_generator = DefaultMarkdownGenerator(
             content_source="cleaned_html",
-            options={"skip_internal_links": True}
+            options={
+                "skip_internal_links": True,
+                "ignore_images": True,
+                "ignore_links": True
+            }
         )
         
         # Create BFS crawl strategy
         bfs_strategy = BFSDeepCrawlStrategy(
             max_depth=self.max_depth,
             include_external=False,
-            max_pages=self.max_pages
+            max_pages=self.max_pages if self.max_pages is not None else 999999  # Use large number for unlimited
         )
         
         crawl_config = CrawlerRunConfig(
@@ -379,14 +451,17 @@ class WebsiteDownloaderBFS:
             stream=True,  # Stream results for better memory management
             markdown_generator=md_generator,
             extraction_strategy=extraction_strategy,
-            excluded_tags=["nav", "footer", "header", "aside", "script", "style", "form"],
+            excluded_tags=["nav", "footer", "header", "aside", "script", "style", "form", "iframe", "embed", "video", "audio"],
             exclude_external_links=True,
             exclude_social_media_links=True,
             exclude_domains=["adtrackers.com", "spammynews.org"],
             word_count_threshold=10,
             deep_crawl_strategy=bfs_strategy,
             wait_until="domcontentloaded",  # Faster than "load"
-            page_timeout=30000  # 30 seconds timeout
+            page_timeout=30000,  # 30 seconds timeout
+            remove_overlay_elements=True,  # Remove popups and overlays
+            delay_before_return_html=0.1,  # Small delay between requests to be respectful
+            verbose=False  # Reduce verbosity for cleaner output
         )
         
         # Increased concurrency settings for better performance
@@ -419,10 +494,12 @@ class WebsiteDownloaderBFS:
                         if self.use_llm_extraction and hasattr(result, 'extracted_content') and result.extracted_content:
                             try:
                                 # Parse the extracted JSON content
-                                extracted_data = json.loads(result.extracted_content)
+                                extracted_data = self._parse_llm_response(result.extracted_content)
                                 self.save_content(result.url, result.markdown, extracted_data)
-                            except (json.JSONDecodeError, Exception) as e:
+                                print(f"Successfully extracted LLM data from {result.url}")
+                            except Exception as e:
                                 print(f"Error parsing extracted content: {e}")
+                                print(f"Raw extracted content preview: {result.extracted_content[:200]}...")
                                 # Fallback to standard markdown
                                 self.save_content(result.url, result.markdown)
                         else:
@@ -481,6 +558,7 @@ OPTIONAL ARGUMENTS:
     --llm-api-key STR      API key for the LLM provider (default: OPENAI_API_KEY or DASHSCOPE_API_KEY env var)
     --llm-base-url STR     Base URL for the LLM API endpoint (default: DashScope compatible endpoint)
     --no-llm               Disable LLM extraction and use standard markdown
+    --json                 Generate JSON files from LLM extraction (no markdown files)
     --consolidate-output   Consolidate all JSONL data into a single file and delete individual JSONL files
     -h, --help             Show this help message
 
@@ -508,6 +586,12 @@ EXAMPLES:
 
     # Consolidate output into a single JSONL file
     python website_downloader_bfs.py https://example.com --consolidate-output
+
+    # Generate JSON files only (no markdown) using LLM extraction
+    python website_downloader_bfs.py https://example.com --json
+
+    # Generate JSON files only and consolidate into single file
+    python website_downloader_bfs.py https://example.com --json --consolidate-output
 
 OUTPUT:
     The script creates markdown files in the output directory:
@@ -555,6 +639,8 @@ async def main():
                        help="Base URL for the LLM API endpoint (default: DashScope compatible endpoint)")
     parser.add_argument("--no-llm", action="store_true",
                        help="Disable LLM extraction and use standard markdown")
+    parser.add_argument("--json", action="store_true",
+                       help="Generate JSON files from LLM extraction (no markdown files)")
     parser.add_argument("--consolidate-output", action="store_true",
                        help="Consolidate all JSONL data into a single file and delete individual JSONL files")
     parser.add_argument("-h", "--help", action="store_true",
@@ -585,6 +671,11 @@ async def main():
     if args.max_pages is not None and args.max_pages < 1:
         print("Error: Max pages must be at least 1")
         return
+
+    # Validate JSON flag conflicts
+    if args.json and args.no_llm:
+        print("Error: --json flag cannot be used with --no-llm. LLM extraction is required for JSON generation.")
+        return
     
     # Configuration
     config = {
@@ -597,6 +688,7 @@ async def main():
         "llm_api_key": args.llm_api_key,
         "llm_base_url": args.llm_base_url,
         "use_llm_extraction": not args.no_llm,
+        "json_output_only": args.json,
         "consolidate_output": args.consolidate_output
     }
     

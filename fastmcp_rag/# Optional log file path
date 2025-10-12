@@ -25,3 +25,4 @@
 2025-10-06 14:58:36,495 - __main__ - INFO - Embedding method: dashscope
 2025-10-06 14:58:36,495 - __main__ - INFO - Qdrant URL: http://localhost:6333
 2025-10-06 14:58:36,495 - FastMCP.fastmcp.server.server - INFO - Starting server "Enhanced Semantic Search RAG"...
+2025-10-06 17:20:57,118 - __main__ - INFO - Server stopped by user
